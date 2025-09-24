@@ -78,7 +78,7 @@ def fetch_bitcoin_history_from_coingecko():
     engine = hook.get_sqlalchemy_engine()
     df.to_sql("bitcoin_history_bruno_ferreira", con=engine, if_exists="append", index=True)
 
-
+#teste
 @dag(
     default_args=DEFAULT_ARGS,
     schedule="0 0 * * *",  # diário à 00:00 UTC
