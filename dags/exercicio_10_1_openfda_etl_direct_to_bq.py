@@ -22,7 +22,7 @@ BIGQUERY_TABLE = "daily_ibuprofen_events"  # Nome da tabela que será criada
 
 
 @dag(
-    dag_id="exercicio_10_1_openfda_etl_direct_to_bq",
+    dag_id="exercicio_10_1_openfda_etl_direct_to_bq_v2", # Renomeado para v2
     start_date=datetime(2024, 1, 1),
     schedule="@daily",
     catchup=False,
@@ -36,7 +36,7 @@ BIGQUERY_TABLE = "daily_ibuprofen_events"  # Nome da tabela que será criada
     """,
     tags=["exercicio", "openfda", "gcp", "etl", "direct-load"],
 )
-def openfda_direct_to_bq_etl_dag():
+def openfda_direct_to_bq_etl_dag_v2():
     """
     DAG para o Exercício 10.1: ETL de dados diários do OpenFDA para o BigQuery sem usar GCS.
     """
@@ -49,13 +49,23 @@ def openfda_direct_to_bq_etl_dag():
         execution_date_str = datetime.fromisoformat(logical_date).strftime("%Y%m%d")
         print(f"Buscando dados para a data: {execution_date_str}")
         
-        url = (
-            "https://api.fda.gov/drug/event.json?"
-            f'search=receivedate:[{execution_date_str}+TO+{execution_date_str}]'
-            '&search=patient.drug.medicinalproduct:"ibuprofen"'
-            "&limit=100"
+        # =======================================================================
+        # CORREÇÃO APLICADA AQUI
+        # =======================================================================
+        # Juntamos os dois critérios de busca com '+AND+' em um único parâmetro 'search'.
+        search_query = (
+            f'receivedate:[{execution_date_str}+TO+{execution_date_str}]'
+            f'+AND+patient.drug.medicinalproduct:"ibuprofen"'
         )
         
+        url = (
+            "https://api.fda.gov/drug/event.json?"
+            f"search={search_query}"
+            "&limit=100"
+        )
+        # =======================================================================
+        
+        print(f"URL da API construída: {url}")
         response = requests.get(url)
         response.raise_for_status()
         
@@ -95,43 +105,32 @@ def openfda_direct_to_bq_etl_dag():
             df_final["patient_sex"] = df_final["patient_sex"].map({"1": "Male", "2": "Female"})
 
         print(f"DataFrame com {len(df_final)} linhas pronto para ser carregado.")
-        print(df_final.head())
         
-        # Conexão com o BigQuery usando o Hook
         bq_hook = BigQueryHook(gcp_conn_id=GCP_CONN_ID)
-        
-        # Obter o cliente Python do Google Cloud BigQuery
         client = bq_hook.get_client(project_id=GCP_PROJECT_ID)
-        
-        # Definir o ID completo da tabela de destino
         table_id = f"{GCP_PROJECT_ID}.{BIGQUERY_DATASET}.{BIGQUERY_TABLE}"
         
-        # Configurar o job de carregamento
         job_config = bigquery.LoadJobConfig(
-            # O BigQuery vai detectar o schema a partir do DataFrame
             autodetect=True,
-            # Se a tabela já tiver dados, os novos serão adicionados no final
             write_disposition="WRITE_APPEND",
-            # Se a tabela não existir, ela será criada
             create_disposition="CREATE_IF_NEEDED",
         )
         
-        # Executar o carregamento do DataFrame para o BigQuery
         job = client.load_table_from_dataframe(
             dataframe=df_final,
             destination=table_id,
             job_config=job_config,
         )
         
-        job.result()  # Espera o job ser concluído
+        job.result()
         
         print(f"Carregamento concluído. {job.output_rows} linhas foram adicionadas à tabela {table_id}.")
 
 
-    # Definindo o fluxo de trabalho (agora mais simples)
+    # Definindo o fluxo de trabalho
     raw_events = extract_openfda_events(logical_date="{{ ds }}")
     transform_and_load_to_bigquery(events=raw_events)
 
 
 # Instanciando o DAG
-openfda_direct_to_bq_etl_dag()
+openfda_direct_to_bq_etl_dag_v2()
